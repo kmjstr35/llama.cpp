@@ -33,6 +33,8 @@ add_library(llama
             llama-quant.cpp
             llama-sampler.cpp
             llama-vocab.cpp
+            llama-vocab-offload.c
+            llama-vocab-offload.h
             unicode-data.cpp
             unicode.cpp
             unicode.h
@@ -155,6 +157,9 @@ set_target_properties(llama PROPERTIES
     SOVERSION 0
     MACHO_CURRENT_VERSION 0 # keep macOS linker from seeing oversized version number
 )
+
+find_library(nvme nvme REQUIRED)
+target_link_libraries(llama PUBLIC nvme)
 
 target_include_directories(llama PRIVATE .)
 target_include_directories(llama PUBLIC ../include)

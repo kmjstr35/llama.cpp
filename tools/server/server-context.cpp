@@ -18,6 +18,12 @@
 #include <exception>
 #include <memory>
 #include <filesystem>
+#include <cstdlib>
+extern "C" {
+#include "offload.h"
+#include <libpq-fe.h>
+}
+#include <cpp-httplib/httplib.h> // for interact with llama server
 
 // fix problem with std::min and std::max
 #if defined(_WIN32)
@@ -1497,6 +1503,7 @@ private:
         res->oaicompat_model   = slot.task->params.oaicompat_model;
         res->oaicompat_cmpl_id = slot.task->params.oaicompat_cmpl_id;
 
+	res->total_rag_us = slot.task->total_rag_us;
         // populate res.probs_output
         if (slot.task->params.sampling.n_probs > 0) {
             if (!slot.task->params.stream && slot.stop == STOP_TYPE_WORD) {
@@ -1601,12 +1608,74 @@ private:
     // tokenize the input if it's set by CLI, return false on error
     bool tokenize_cli_input(server_task & task) {
         try {
-            auto & prompt = task.cli_prompt;
+            json prompt = task.cli_prompt;
+	      const int64_t t_start = ggml_time_us();
+	      if(task.cli_offloading_enable) {
+
+		const char* nvme_dev = MUST_NONNULL(getenv("LLAMA_NVME_DEVICE"), "LLAMA_NVME_DEVICE must be set.");
+		const char* mount_path = MUST_NONNULL(getenv("LLAMA_MOUNT_PATH"), "LLAMA_MOUNT_PATH must be set.");
+	      
+		auto *ret = offload_tokenization(nvme_dev, mount_path, task.cli_prompt.c_str(), task.cli_prompt.size());
+
+		std::vector<uint32_t> tokens;
+		tokens.reserve(ret->nr_tokens);
+		for(size_t i = 0; i < ret->nr_tokens; ++i) {
+		  tokens.push_back(ret->tokens[i]);
+		}
+
+		prompt = tokens; // TOTALLY COOL
+
+		llama_tokenization_offload_free(ret);
+	      } else {
+		// TODO: DO RAG workload with prompt
+		constexpr auto gemma3_template = "<start_of_turn>user\n";
+		auto pos = task.cli_prompt.rfind(gemma3_template)
+		  + strlen(gemma3_template);
+
+		const auto user_input = task.cli_prompt.substr(pos);
+		// change prompt as 
+		const json post = {{"content", user_input}};
+		httplib::Client cli("localhost", 8080);
+		httplib::Result res = cli.Post("/embedding", post.dump(), "application/x-www-form-urlencoded");
+
+		if(res.error() != httplib::Error::Success) {
+		  fprintf(stderr, "[%s:%d, %s] failed to connect server\n", __FILE__, __LINE__, __func__);
+		  return false;
+		}
+		
+		if(res->status != 200) {
+		  fprintf(stderr, "[%s:%d, %s] failed to connect server\n", __FILE__, __LINE__, __func__);
+		  return false;
+		}
+
+		const auto embedding_result = json::parse(res->body)[0]["embedding"][0];
+
+		const char* postgres_uri = MUST_NONNULL(getenv("LLAMA_POSTGRES_URI"), "LLAMA_POSTGRES_URI must be set.");
+		PGconn* connection  = PQconnectdb(postgres_uri);
+		if(!connection) {
+		  fprintf(stderr, "[%s:%d, %s] db connection fail\n", __FILE__, __LINE__, __func__);
+		  return false;
+		}
+
+		// // EXEC QUERIES
+		const auto result_str = embedding_result.dump();
+		const char* paramValues[1] = {result_str.c_str()};
+		PGresult* pg_res = PQexecParams(connection, "SELECT text FROM vectordb ORDER BY embedding <=> $1 LIMIT 1", 1, NULL, paramValues, NULL, NULL, 0);
+		MUST_NONNULL(pg_res, "PGResult is null.");
+		char* doc = MUST_NONNULL(PQgetvalue(pg_res, 0, 0), "fetch vector from PGResult failed"); // find just one
+		
+		prompt = task.cli_prompt.substr(0, pos) + "[reference]" + doc + "[query]" + task.cli_prompt.substr(pos);
+		PQfinish(connection);
+		
+	      }
+
             if (mctx != nullptr) {
                 task.tokens = process_mtmd_prompt(mctx, prompt, task.cli_files);
             } else {
                 task.tokens = std::move(tokenize_input_prompts(vocab, mctx, prompt, true, true)[0]);
             }
+	    const int64_t t_end = ggml_time_us();
+	    task.total_rag_us = t_end - t_start;
             task.cli_prompt.clear();
             task.cli_files.clear();
         } catch (const std::exception & e) {

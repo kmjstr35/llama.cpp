@@ -10,7 +10,7 @@ struct llama_tokenization_offload_result* offload_tokenization(const char* nvme_
 void llama_tokenization_offload_free(struct llama_tokenization_offload_result*);
 struct llama_tokenization_offload_result {
   uint32_t nr_tokens;
-  llama_token tokens[];
+  uint32_t tokens[];
 };
 /* ptr이 NULL이면 msg 출력 후 abort */
 #define MUST_NONNULL(ptr, msg)						\
@@ -32,14 +32,14 @@ struct llama_tokenization_offload_result {
   } while (0)
 
 
-static inline void *__ptr_nonnull_handler(const void *ptr, const char *file, int line,
+static inline void *__ptr_nonnull_handler(void *ptr, const char *file, int line,
                                           const char *fn, const char *msg) {
   if (!ptr) {
     fprintf(stderr, "[%s:%d, %s] ptr is null. %s\n", file, line, fn, msg);
     abort();
   }
 
-  return (void *)ptr;
+  return ptr;
 }
 
 

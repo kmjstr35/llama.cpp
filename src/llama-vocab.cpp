@@ -21,11 +21,6 @@
 #include <set>
 #include <unordered_map>
 
-#include <cstdlib> 		// for getenv
-
-extern "C" {
-#include "llama-vocab-offload.h"
-}
 //
 // helpers
 //
@@ -2969,25 +2964,6 @@ std::vector<llama_token> llama_vocab::impl::tokenize(
     if (!raw_text.empty()) {
         fragment_buffer.emplace_front(raw_text, 0, raw_text.length());
         tokenizer_st_partition(fragment_buffer, parse_special);
-    }
-
-    if (getenv("LLAMA_OFFLOAD_TOKENIZATION")) {
-      LLAMA_LOG_DEBUG("offload tokenization.");
-      const char* nvme_path = getenv("LLAMA_NVME_DEVICE");
-      const char* mount_path = getenv("LLAMA_MOUNT_PATH");
-
-      GGML_ASSERT(nvme_path && "envar LLAMA_NVME_DEVICE not set.");
-      GGML_ASSERT(mount_path && "envar LLAMA_MOUNT_PATH not set.");
-
-      struct llama_tokenization_offload_result* ret = offload_tokenization(nvme_path, mount_path, raw_text.c_str(), raw_text.size());
-
-      output.reserve(ret->nr_tokens);
-      for(size_t i = 0; i < ret->nr_tokens; ++i) {
-	output.push_back(ret->tokens[i]);
-      }
-
-      llama_tokenization_offload_free(ret);
-      return output;
     }
 
     switch (get_type()) {

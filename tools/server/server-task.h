@@ -153,6 +153,8 @@ struct server_task {
 
     server_task_type type;
 
+    bool cli_offloading_enable = false;
+    int64_t total_rag_us = 0;
     // used by SERVER_TASK_TYPE_SLOT_SAVE, SERVER_TASK_TYPE_SLOT_RESTORE, SERVER_TASK_TYPE_SLOT_ERASE
     struct slot_action {
         int id_slot;
@@ -273,6 +275,7 @@ struct result_timings {
     // Optional speculative metrics - only included when > 0
     int32_t draft_n = 0;
     int32_t draft_n_accepted = 0;
+    int64_t total_rag_us = 0;
 
     json to_json() const;
 };
@@ -370,6 +373,8 @@ struct server_task_result_cmpl_final : server_task_result {
     std::string oai_resp_id;
     std::string oai_resp_reasoning_id;
     std::string oai_resp_message_id;
+
+    int64_t total_rag_us = 0;
 
     virtual bool is_stop() override {
         return true; // in stream mode, final responses are considered stop

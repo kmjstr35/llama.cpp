@@ -13,6 +13,8 @@ add_library(${TARGET} STATIC
     server-common.h
     server-context.cpp
     server-context.h
+    offload.h
+    offload.c
 )
 
 if (BUILD_SHARED_LIBS)

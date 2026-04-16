@@ -33,8 +33,6 @@ add_library(llama
             llama-quant.cpp
             llama-sampler.cpp
             llama-vocab.cpp
-            llama-vocab-offload.c
-            llama-vocab-offload.h
             unicode-data.cpp
             unicode.cpp
             unicode.h
@@ -160,6 +158,8 @@ set_target_properties(llama PROPERTIES
 
 find_library(nvme nvme REQUIRED)
 target_link_libraries(llama PUBLIC nvme)
+find_library(pq pq REQUIRED)
+target_link_libraries(llama PUBLIC pq)
 
 target_include_directories(llama PRIVATE .)
 target_include_directories(llama PUBLIC ../include)

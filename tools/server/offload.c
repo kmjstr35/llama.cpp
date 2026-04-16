@@ -16,7 +16,7 @@
 #include <linux/fiemap.h>
 #include <linux/fs.h>
 #include <sys/ioctl.h>
-#include "llama-vocab-offload.h"
+#include "offload.h"
 
 /* libnvme latest stable(version 1.16.1) 기준으로 작성 */
 /* HEAD는 api가 상당히 많이 바뀌었음 */
@@ -102,7 +102,7 @@ static void init_nvme_cmd(const struct extent_info* input, const struct extent_i
   memcpy(send_buf + input_bytes, output, output_bytes);
 
   *cmd = (struct nvme_passthru_cmd64) {
-    .opcode = 0xD4, /* bpe command opcode */
+    .opcode = 0xD5, /* bpe command opcode */
     .nsid = 1,      /* namespace 늘어날 일 없음 */
     .addr = (uint64_t)(uintptr_t)send_buf,
     .data_len = send_buf_size,
@@ -117,7 +117,7 @@ static void init_nvme_cmd(const struct extent_info* input, const struct extent_i
 }
 
 static void deinit_nvme_cmd(struct nvme_passthru_cmd64* cmd) {
-  ASSERT(cmd->opcode == 0xD4, "opcode mismatch");
+  ASSERT(cmd->opcode == 0xD5, "opcode mismatch");
   free((void*)cmd->addr);
   (*cmd) = (struct nvme_passthru_cmd64){0, }; /* zeroing */
 }

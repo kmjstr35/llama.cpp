@@ -38,6 +38,7 @@ static bool should_stop() {
     return g_is_interrupted.load();
 }
 
+static bool g_is_rag_offloading_enable = false;
 #if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__)) || defined (_WIN32)
 static void signal_handler(int) {
     if (g_is_interrupted.load()) {
@@ -92,6 +93,8 @@ struct cli_context {
             task.cli_files  = input_files;        // copy
             task.cli        = true;
 
+	    task.cli_offloading_enable = g_is_rag_offloading_enable;
+	    // tokenizing in-place
             // chat template settings
             task.params.chat_parser_params = common_chat_parser_params(chat_params);
             task.params.chat_parser_params.reasoning_format = COMMON_REASONING_FORMAT_DEEPSEEK;
@@ -175,6 +178,7 @@ struct cli_context {
             auto res_final = dynamic_cast<server_task_result_cmpl_final *>(result.get());
             if (res_final) {
                 out_timings = std::move(res_final->timings);
+		out_timings.total_rag_us = res_final->total_rag_us;
                 break;
             }
             result = rd.next(should_stop);
@@ -224,13 +228,14 @@ struct cli_context {
 };
 
 // TODO?: Make this reusable, enums, docs
-static const std::array<const std::string, 6> cmds = {
+static const std::array<const std::string, 7> cmds = {
     "/audio ",
     "/clear",
     "/exit",
     "/image ",
     "/read ",
     "/regen",
+    "/toggle-rag-offload",
 };
 
 static std::vector<std::pair<std::string, size_t>> auto_completion_callback(std::string_view line, size_t cursor_byte_pos) {
@@ -343,7 +348,6 @@ int main(int argc, char ** argv) {
     common_params params;
 
     params.verbosity = LOG_LEVEL_ERROR; // by default, less verbose logs
-
     if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_CLI)) {
         return 1;
     }
@@ -437,6 +441,7 @@ int main(int argc, char ** argv) {
     if (inf.has_inp_audio) {
         console::log("  /audio <file>       add an audio file\n");
     }
+    console::log("  /toggle-rag-offload          toggle RAG offloading\n");
     console::log("\n");
 
     // interactive loop
@@ -542,12 +547,18 @@ int main(int argc, char ** argv) {
             cur_msg += marker;
             console::log("Loaded text from '%s'\n", fname.c_str());
             continue;
-        } else {
+        } else if(string_starts_with(buffer, "/toggle-rag-offload")) {
+	  g_is_rag_offloading_enable = !g_is_rag_offloading_enable;
+	  console::log("toggle rag offloading. offloading %s\n", g_is_rag_offloading_enable? "enabled":"disabled");
+	  continue;
+	}else {
             // not a command
             cur_msg += buffer;
         }
 
+	// TODO: add RAG
         // generate response
+
         if (add_user_msg) {
             ctx_cli.messages.push_back({
                 {"role",    "user"},
@@ -566,6 +577,7 @@ int main(int argc, char ** argv) {
         if (params.show_timings) {
             console::set_display(DISPLAY_TYPE_INFO);
             console::log("\n");
+            console::log("[ RAG: %" PRIi64 " us]\n", timings.total_rag_us);
             console::log("[ Prompt: %.1f t/s | Generation: %.1f t/s ]\n", timings.prompt_per_second, timings.predicted_per_second);
             console::set_display(DISPLAY_TYPE_RESET);
         }
@@ -584,6 +596,5 @@ int main(int argc, char ** argv) {
     // bump the log level to display timings
     common_log_set_verbosity_thold(LOG_LEVEL_INFO);
     llama_memory_breakdown_print(ctx_cli.ctx_server.get_llama_context());
-
     return 0;
 }

@@ -1665,6 +1665,7 @@ private:
 		char* doc = MUST_NONNULL(PQgetvalue(pg_res, 0, 0), "fetch vector from PGResult failed"); // find just one
 		
 		prompt = task.cli_prompt.substr(0, pos) + "[reference]" + doc + "[query]" + task.cli_prompt.substr(pos);
+		PQclear(pg_res);
 		PQfinish(connection);
 		
 	      }

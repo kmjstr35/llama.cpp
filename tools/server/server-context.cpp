@@ -1633,9 +1633,11 @@ private:
 		  + strlen(gemma3_template);
 
 		const auto user_input = task.cli_prompt.substr(pos);
-		// change prompt as 
+		// change prompt as
 		const json post = {{"content", user_input}};
 		httplib::Client cli("localhost", 8080);
+		
+		uint64_t embedding_start = ggml_time_us();
 		httplib::Result res = cli.Post("/embedding", post.dump(), "application/x-www-form-urlencoded");
 
 		if(res.error() != httplib::Error::Success) {
@@ -1649,7 +1651,11 @@ private:
 		}
 
 		const auto embedding_result = json::parse(res->body)[0]["embedding"][0];
+		uint64_t embedding_end = ggml_time_us();
 
+		printf("embedding: %" PRIu64 "\n", embedding_end - embedding_start);
+		
+		uint64_t pg_start = ggml_time_us();
 		const char* postgres_uri = MUST_NONNULL(getenv("LLAMA_POSTGRES_URI"), "LLAMA_POSTGRES_URI must be set.");
 		PGconn* connection  = PQconnectdb(postgres_uri);
 		if(!connection) {
@@ -1667,7 +1673,8 @@ private:
 		prompt = task.cli_prompt.substr(0, pos) + "[reference]" + doc + "[query]" + task.cli_prompt.substr(pos);
 		PQclear(pg_res);
 		PQfinish(connection);
-		
+		uint64_t pg_end = ggml_time_us();
+		printf("vectordb: %" PRIu64 "\n", embedding_end - embedding_start);
 	      }
 
             if (mctx != nullptr) {

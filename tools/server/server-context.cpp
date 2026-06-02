@@ -1653,7 +1653,7 @@ private:
 		const auto embedding_result = json::parse(res->body)[0]["embedding"][0];
 		uint64_t embedding_end = ggml_time_us();
 
-		printf("embedding: %" PRIu64 "(us)\n", embedding_end - embedding_start);
+		printf("TIMING {\"embedding(us)\": %" PRIu64 "}\n", embedding_end - embedding_start);
 		
 		uint64_t pg_start = ggml_time_us();
 		const char* postgres_uri = MUST_NONNULL(getenv("LLAMA_POSTGRES_URI"), "LLAMA_POSTGRES_URI must be set.");
@@ -1674,7 +1674,7 @@ private:
 		PQclear(pg_res);
 		PQfinish(connection);
 		uint64_t pg_end = ggml_time_us();
-		printf("vectordb: %" PRIu64 "(us)\n", pg_end - pg_start);
+		printf("TIMING {\"vectordb(us)\": %" PRIu64 "}\n", pg_end - pg_start);
 	      }
 
 	      
@@ -1689,7 +1689,7 @@ private:
 
 	    // 
 	    if(!task.cli_offloading_enable) {
-		printf("tokenize: %" PRIu64 "(us)\n", tokenize_end - tokenize_start);
+	      printf("TIMING {\"tokenize(us)\": %" PRIu64 "}\n", tokenize_end - tokenize_start);
 	    }
 	    const int64_t t_end = ggml_time_us();
 	    task.total_rag_us = t_end - t_start;

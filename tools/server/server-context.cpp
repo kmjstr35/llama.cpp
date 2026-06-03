@@ -19,10 +19,6 @@
 #include <memory>
 #include <filesystem>
 #include <cstdlib>
-extern "C" {
-#include "offload.h"
-#include <libpq-fe.h>
-}
 #include <cpp-httplib/httplib.h> // for interact with llama server
 
 // fix problem with std::min and std::max
@@ -545,7 +541,7 @@ public:
 
     // note: chat_params must not be refreshed upon existing sleeping state
     server_chat_params chat_params;
-
+    PGconn* pg_connection{nullptr};
     ~server_context_impl() {
         if (!sleeping) {
             // destroy() is already called when entering sleeping state
@@ -609,6 +605,10 @@ private:
         }
 
         llama_batch_free(batch);
+	if(pg_connection) {
+	  // cleanup & 성능 측정
+	  PQfinish(pg_connection);
+	}
     }
 
     void handle_sleeping_state(bool new_state) {
@@ -856,6 +856,9 @@ private:
         GGML_ASSERT(ctx != nullptr);
         GGML_ASSERT(model != nullptr);
         GGML_ASSERT(!sleeping);
+
+	const char* postgres_uri = MUST_NONNULL(getenv("LLAMA_POSTGRES_URI"), "LLAMA_POSTGRES_URI must be set.");
+	pg_connection = PQconnectdb(postgres_uri);
 
         // wiring up server queues
         queue_tasks.on_new_task([this](server_task && task) {
@@ -1656,8 +1659,7 @@ private:
 		printf("TIMING {\"embedding(us)\": %" PRIu64 "}\n", embedding_end - embedding_start);
 		
 		uint64_t pg_start = ggml_time_us();
-		const char* postgres_uri = MUST_NONNULL(getenv("LLAMA_POSTGRES_URI"), "LLAMA_POSTGRES_URI must be set.");
-		PGconn* connection  = PQconnectdb(postgres_uri);
+		PGconn* connection  = this->pg_connection;
 		if(!connection) {
 		  fprintf(stderr, "[%s:%d, %s] db connection fail\n", __FILE__, __LINE__, __func__);
 		  return false;
@@ -1672,7 +1674,6 @@ private:
 		
 		prompt = task.cli_prompt.substr(0, pos) + "[reference]" + doc + "[query]" + task.cli_prompt.substr(pos);
 		PQclear(pg_res);
-		PQfinish(connection);
 		uint64_t pg_end = ggml_time_us();
 		printf("TIMING {\"vectordb(us)\": %" PRIu64 "}\n", pg_end - pg_start);
 	      }
@@ -3033,6 +3034,11 @@ private:
 
 server_context::server_context() : impl(new server_context_impl()) {}
 server_context::~server_context() = default;
+
+PGconn* server_context::get_pg_connection() const {
+    return impl->pg_connection;
+}
+
 
 bool server_context::load_model(const common_params & params) {
     return impl->load_model(params);

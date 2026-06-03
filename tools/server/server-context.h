@@ -9,6 +9,10 @@
 #include <cstddef>
 #include <memory>
 #include <set>
+extern "C" {
+#include "offload.h"
+#include <libpq-fe.h>
+}
 
 struct server_context_impl; // private implementation
 
@@ -58,6 +62,7 @@ struct server_context {
     // returns true on success
     bool load_model(const common_params & params);
 
+    PGconn* get_pg_connection() const;
     // this function will block main thread until termination
     void start_loop();
 
